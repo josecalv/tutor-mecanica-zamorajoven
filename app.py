@@ -13,9 +13,16 @@ st.set_page_config(
 st.title("🚗 Tutor Virtual: Mecánica y Electricidad")
 st.caption("CFGB Mantenimiento de Vehículos — Centro Menesiano ZamoraJoven")
 
-# Panel lateral de clave API
+# Panel lateral de clave API y modelo
 st.sidebar.header("⚙️ Configuración")
 api_key = st.sidebar.text_input("Gemini API Key:", type="password")
+
+# Selector de modelo en la barra lateral
+model_option = st.sidebar.selectbox(
+    "Modelo de IA:",
+    ["gemini-2.5-flash", "gemini-1.5-flash"],
+    index=0
+)
 
 SYSTEM_PROMPT = """
 ROL Y PERFIL:
@@ -43,9 +50,31 @@ if not api_key:
     st.info("👈 Por favor, pega tu clave API en la barra lateral izquierda para comenzar.")
     st.stop()
 
-# Reiniciar historial si cambia la clave o se pulsa el botón
 if "messages" not in st.session_state or st.sidebar.button("Reiniciar Chat"):
     st.session_state.messages = []
+
+def call_gemini(client, contents):
+    """Intenta llamar al modelo seleccionado y aplica fallback si no existe."""
+    try:
+        return client.models.generate_content(
+            model=model_option,
+            contents=contents,
+            config=types.GenerateContentConfig(
+                system_instruction=SYSTEM_PROMPT,
+                temperature=0.7,
+            )
+        )
+    except Exception:
+        # Fallback automático al modelo secundario
+        fallback = "gemini-1.5-flash" if model_option != "gemini-1.5-flash" else "gemini-2.5-flash"
+        return client.models.generate_content(
+            model=fallback,
+            contents=contents,
+            config=types.GenerateContentConfig(
+                system_instruction=SYSTEM_PROMPT,
+                temperature=0.7,
+            )
+        )
 
 try:
     client = genai.Client(api_key=api_key.strip())
@@ -53,22 +82,15 @@ try:
     # Generar la bienvenida diagnóstica si el chat está vacío
     if not st.session_state.messages:
         init_prompt = "Genera la bienvenida inicial de la FASE 1 con las 3 preguntas diagnósticas."
-        response = client.models.generate_content(
-            model="gemini-2.5-flash",
-            contents=init_prompt,
-            config=types.GenerateContentConfig(
-                system_instruction=SYSTEM_PROMPT,
-                temperature=0.7,
-            )
-        )
+        response = call_gemini(client, init_prompt)
         st.session_state.messages.append({"role": "assistant", "content": response.text})
 
-    # Mostrar la conversación guardada
+    # Mostrar la conversación
     for msg in st.session_state.messages:
         with st.chat_message(msg["role"]):
             st.markdown(msg["content"])
 
-    # Entrada de texto del alumno
+    # Respuesta a la interacción del estudiante
     if user_input := st.chat_input("Escribe tu respuesta o duda aquí..."):
         st.session_state.messages.append({"role": "user", "content": user_input})
         with st.chat_message("user"):
@@ -81,14 +103,7 @@ try:
 
         with st.chat_message("assistant"):
             with st.spinner("Pensando respuesta..."):
-                res = client.models.generate_content(
-                    model="gemini-2.5-flash",
-                    contents=contents,
-                    config=types.GenerateContentConfig(
-                        system_instruction=SYSTEM_PROMPT,
-                        temperature=0.7,
-                    )
-                )
+                res = call_gemini(client, contents)
                 st.markdown(res.text)
                 st.session_state.messages.append({"role": "assistant", "content": res.text})
 
