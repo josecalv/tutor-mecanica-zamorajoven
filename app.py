@@ -3,11 +3,17 @@ import streamlit as st
 from google import genai
 from google.genai import types
 
-st.set_page_config(page_title="Tutor ZamoraJoven", page_icon="🚗", layout="centered")
+# Configuración de la página
+st.set_page_config(
+    page_title="Tutor ZamoraJoven",
+    page_icon="🚗",
+    layout="centered"
+)
 
 st.title("🚗 Tutor Virtual: Mecánica y Electricidad")
 st.caption("CFGB Mantenimiento de Vehículos — Centro Menesiano ZamoraJoven")
 
+# Entrada de la clave API
 st.sidebar.header("⚙️ Configuración")
 api_key = st.sidebar.text_input("Gemini API Key:", type="password")
 
@@ -34,12 +40,13 @@ METODOLOGÍA DIDÁCTICA Y REGLAS DE INTERACCIÓN:
 """
 
 if not api_key:
-    st.info("👈 Por favor, pega tu clave API (empieza por AIzaSy...) en la barra lateral izquierda.")
+    st.info("👈 Por favor, pega tu clave API en la casilla de la barra lateral izquierda para comenzar.")
     st.stop()
 
 try:
     client = genai.Client(api_key=api_key.strip())
 
+    # Inicialización o reinicio del chat
     if "messages" not in st.session_state or st.sidebar.button("Reiniciar Chat"):
         st.session_state.messages = []
         init_prompt = "Genera la bienvenida inicial de la FASE 1 con las 3 preguntas diagnósticas."
@@ -59,10 +66,12 @@ try:
             
         st.session_state.messages.append({"role": "assistant", "content": response.text})
 
+    # Renderizado del historial
     for msg in st.session_state.messages:
         with st.chat_message(msg["role"]):
             st.markdown(msg["content"])
 
+    # Interacción del estudiante
     if user_input := st.chat_input("Escribe tu respuesta o duda aquí..."):
         st.session_state.messages.append({"role": "user", "content": user_input})
         with st.chat_message("user"):
