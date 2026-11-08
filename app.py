@@ -10,9 +10,16 @@ st.set_page_config(
     layout="centered"
 )
 
-# Clave API integrada
-API_KEY_DIRECTA = "AQ.Ab8RN6JXiZVji4shmzBI-imkjS6j5ZWGBAzFd1pBZ0sww4qmuQ"
-api_key = st.secrets.get("GEMINI_API_KEY") or os.getenv("GEMINI_API_KEY") or API_KEY_DIRECTA
+st.title("🚗 Tutor Virtual: Mecánica y Electricidad")
+st.caption("CFGB Mantenimiento de Vehículos — Centro Menesiano ZamoraJoven")
+
+# Clave inicial
+clave_inicial = "AQ.Ab8RN6JXiZVji4shmzBI-imkjS6j5ZWGBAzFd1pBZ0sww4qmuQ"
+api_key_default = st.secrets.get("GEMINI_API_KEY") or os.getenv("GEMINI_API_KEY") or clave_inicial
+
+# Casilla en la barra lateral para poder cambiar la clave si falla
+st.sidebar.header("⚙️ Configuración")
+api_key = st.sidebar.text_input("Gemini API Key:", value=api_key_default, type="password")
 
 SYSTEM_PROMPT = """
 ROL Y PERFIL:
@@ -36,51 +43,63 @@ METODOLOGÍA DIDÁCTICA Y REGLAS DE INTERACCIÓN:
 - Formato: Respuestas breves y estructuradas (máximo 3-4 párrafos por turno). Realiza solo una pregunta o instrucción por mensaje.
 """
 
-st.title("🚗 Tutor Virtual: Mecánica y Electricidad")
-st.caption("CFGB Mantenimiento de Vehículos — Centro Menesiano ZamoraJoven")
+if not api_key:
+    st.info("Por favor, introduce una API Key válida en la barra lateral para comenzar.")
+    st.stop()
 
-# Cliente Gemini
-client = genai.Client(api_key=api_key)
+try:
+    # Crear cliente Gemini
+    client = genai.Client(api_key=api_key)
 
-# Inicializar conversación
-if "messages" not in st.session_state:
-    st.session_state.messages = []
-    init_prompt = "Genera la bienvenida inicial de la FASE 1 con las 3 preguntas diagnósticas."
-    response = client.models.generate_content(
-        model="gemini-2.5-flash",
-        contents=init_prompt,
-        config=types.GenerateContentConfig(
-            system_instruction=SYSTEM_PROMPT,
-            temperature=0.7,
-        )
-    )
-    st.session_state.messages.append({"role": "assistant", "content": response.text})
-
-# Mostrar historial
-for msg in st.session_state.messages:
-    with st.chat_message(msg["role"]):
-        st.markdown(msg["content"])
-
-# Entrada del estudiante
-if user_input := st.chat_input("Escribe tu respuesta o duda aquí..."):
-    st.session_state.messages.append({"role": "user", "content": user_input})
-    with st.chat_message("user"):
-        st.markdown(user_input)
-
-    contents = []
-    for m in st.session_state.messages:
-        role = "user" if m["role"] == "user" else "model"
-        contents.append(types.Content(role=role, parts=[types.Part.from_text(text=m["content"])]))
-
-    with st.chat_message("assistant"):
-        with st.spinner("Pensando respuesta..."):
-            res = client.models.generate_content(
-                model="gemini-2.5-flash",
-                contents=contents,
-                config=types.GenerateContentConfig(
-                    system_instruction=SYSTEM_PROMPT,
-                    temperature=0.7,
-                )
+    # Inicializar conversación
+    if "messages" not in st.session_state:
+        st.session_state.messages = []
+        init_prompt = "Genera la bienvenida inicial de la FASE 1 con las 3 preguntas diagnósticas."
+        response = client.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=init_prompt,
+            config=types.GenerateContentConfig(
+                system_instruction=SYSTEM_PROMPT,
+                temperature=0.7,
             )
-            st.markdown(res.text)
-            st.session_state.messages.append({"role": "assistant", "content": res.text})
+        )
+        st.session_state.messages.append({"role": "assistant", "content": response.text})
+
+    # Mostrar historial de chat
+    for msg in st.session_state.messages:
+        with st.chat_message(msg["role"]):
+            st.markdown(msg["content"])
+
+    # Entrada del estudiante
+    if user_input := st.chat_input("Escribe tu respuesta o duda aquí..."):
+        st.session_state.messages.append({"role": "user", "content": user_input})
+        with st.chat_message("user"):
+            st.markdown(user_input)
+
+        contents = []
+        for m in st.session_state.messages:
+            role = "user" if m["role"] == "user" else "model"
+            contents.append(types.Content(role=role, parts=[types.Part.from_text(text=m["content"])]))
+
+        with st.chat_message("assistant"):
+            with st.spinner("Pensando respuesta..."):
+                res = client.models.generate_content(
+                    model="gemini-2.5-flash",
+                    contents=contents,
+                    config=types.GenerateContentConfig(
+                        system_instruction=SYSTEM_PROMPT,
+                        temperature=0.7,
+                    )
+                )
+                st.markdown(res.text)
+                st.session_state.messages.append({"role": "assistant", "content": res.text})
+
+except Exception as e:
+    st.error("⚠️ La clave API actual ha sido rechazada por Google (Error 403 / Permisos).")
+    st.warning(
+        "**Cómo solucionarlo en 1 minuto:**\n"
+        "1. Abre una ventana de incógnito y entra en [Google AI Studio](https://aistudio.google.com/).\n"
+        "2. Inicia sesión con una **cuenta personal de Gmail** (`@gmail.com`).\n"
+        "3. Pulsa en **'Get API key'** -> **'Create API key'** (obtendrás una clave que empieza por `AIzaSy...`).\n"
+        "4. Pégala en la casilla de la **barra lateral izquierda** de esta web y el chat empezará a funcionar al instante."
+    )
