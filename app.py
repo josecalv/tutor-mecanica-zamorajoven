@@ -3,7 +3,7 @@ import streamlit as st
 from google import genai
 from google.genai import types
 
-# Configuración de la página
+# Configuración de la aplicación
 st.set_page_config(
     page_title="Tutor ZamoraJoven",
     page_icon="🚗",
@@ -13,7 +13,7 @@ st.set_page_config(
 st.title("🚗 Tutor Virtual: Mecánica y Electricidad")
 st.caption("CFGB Mantenimiento de Vehículos — Centro Menesiano ZamoraJoven")
 
-# Entrada de la clave API
+# Panel lateral de clave API
 st.sidebar.header("⚙️ Configuración")
 api_key = st.sidebar.text_input("Gemini API Key:", type="password")
 
@@ -40,38 +40,35 @@ METODOLOGÍA DIDÁCTICA Y REGLAS DE INTERACCIÓN:
 """
 
 if not api_key:
-    st.info("👈 Por favor, pega tu clave API en la casilla de la barra lateral izquierda para comenzar.")
+    st.info("👈 Por favor, pega tu clave API en la barra lateral izquierda para comenzar.")
     st.stop()
+
+# Reiniciar historial si cambia la clave o se pulsa el botón
+if "messages" not in st.session_state or st.sidebar.button("Reiniciar Chat"):
+    st.session_state.messages = []
 
 try:
     client = genai.Client(api_key=api_key.strip())
 
-    # Inicialización o reinicio del chat
-    if "messages" not in st.session_state or st.sidebar.button("Reiniciar Chat"):
-        st.session_state.messages = []
+    # Generar la bienvenida diagnóstica si el chat está vacío
+    if not st.session_state.messages:
         init_prompt = "Genera la bienvenida inicial de la FASE 1 con las 3 preguntas diagnósticas."
-        
-        try:
-            response = client.models.generate_content(
-                model="gemini-2.5-flash",
-                contents=init_prompt,
-                config=types.GenerateContentConfig(system_instruction=SYSTEM_PROMPT, temperature=0.7)
+        response = client.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=init_prompt,
+            config=types.GenerateContentConfig(
+                system_instruction=SYSTEM_PROMPT,
+                temperature=0.7,
             )
-        except Exception:
-            response = client.models.generate_content(
-                model="gemini-1.5-flash",
-                contents=init_prompt,
-                config=types.GenerateContentConfig(system_instruction=SYSTEM_PROMPT, temperature=0.7)
-            )
-            
+        )
         st.session_state.messages.append({"role": "assistant", "content": response.text})
 
-    # Renderizado del historial
+    # Mostrar la conversación guardada
     for msg in st.session_state.messages:
         with st.chat_message(msg["role"]):
             st.markdown(msg["content"])
 
-    # Interacción del estudiante
+    # Entrada de texto del alumno
     if user_input := st.chat_input("Escribe tu respuesta o duda aquí..."):
         st.session_state.messages.append({"role": "user", "content": user_input})
         with st.chat_message("user"):
@@ -84,20 +81,16 @@ try:
 
         with st.chat_message("assistant"):
             with st.spinner("Pensando respuesta..."):
-                try:
-                    res = client.models.generate_content(
-                        model="gemini-2.5-flash",
-                        contents=contents,
-                        config=types.GenerateContentConfig(system_instruction=SYSTEM_PROMPT, temperature=0.7)
+                res = client.models.generate_content(
+                    model="gemini-2.5-flash",
+                    contents=contents,
+                    config=types.GenerateContentConfig(
+                        system_instruction=SYSTEM_PROMPT,
+                        temperature=0.7,
                     )
-                except Exception:
-                    res = client.models.generate_content(
-                        model="gemini-1.5-flash",
-                        contents=contents,
-                        config=types.GenerateContentConfig(system_instruction=SYSTEM_PROMPT, temperature=0.7)
-                    )
+                )
                 st.markdown(res.text)
                 st.session_state.messages.append({"role": "assistant", "content": res.text})
 
 except Exception as e:
-    st.error(f"❌ Error de conexión recibido de Google: {e}")
+    st.error(f"❌ Error de conexión: {e}")
