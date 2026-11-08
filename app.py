@@ -46,46 +46,44 @@ if not api_key:
 if "messages" not in st.session_state or st.sidebar.button("Reiniciar Chat"):
     st.session_state.messages = []
 
-def get_client_and_model(key_str):
-    client = genai.Client(api_key=key_str)
-    available_models = []
-    try:
-        for m in client.models.list():
-            available_models.append(m.name)
-    except Exception:
-        pass
-
-    # Selección jerárquica entre los modelos devueltos por Google
-    selected = None
-    for pref in ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash", "flash"]:
-        for model_name in available_models:
-            if pref in model_name:
-                selected = model_name
-                break
-        if selected:
-            break
-
-    if not selected:
-        selected = available_models[0] if available_models else "gemini-2.5-flash"
-
-    return client, selected
+def generate_content_with_fallback(client, contents):
+    """Prueba en tiempo real los modelos compatibles hasta que uno acepte la petición."""
+    candidate_models = [
+        "gemini-2.0-flash",
+        "gemini-1.5-flash",
+        "gemini-1.5-pro"
+    ]
+    
+    last_error = None
+    for model_name in candidate_models:
+        try:
+            response = client.models.generate_content(
+                model=model_name,
+                contents=contents,
+                config=types.GenerateContentConfig(
+                    system_instruction=SYSTEM_PROMPT,
+                    temperature=0.7,
+                )
+            )
+            return response, model_name
+        except Exception as e:
+            last_error = e
+            continue
+            
+    raise last_error
 
 try:
-    client, active_model = get_client_and_model(api_key.strip())
-    st.sidebar.success(f"Modelo activo: `{active_model}`")
+    client = genai.Client(api_key=api_key.strip())
 
     # Inicializar el chat si está vacío
     if not st.session_state.messages:
         init_prompt = "Genera la bienvenida inicial de la FASE 1 con las 3 preguntas diagnósticas."
-        response = client.models.generate_content(
-            model=active_model,
-            contents=init_prompt,
-            config=types.GenerateContentConfig(
-                system_instruction=SYSTEM_PROMPT,
-                temperature=0.7,
-            )
-        )
+        response, used_model = generate_content_with_fallback(client, init_prompt)
         st.session_state.messages.append({"role": "assistant", "content": response.text})
+        st.session_state["active_model_name"] = used_model
+
+    if "active_model_name" in st.session_state:
+        st.sidebar.success(f"Modelo activo: `{st.session_state['active_model_name']}`")
 
     # Mostrar historial de conversación
     for msg in st.session_state.messages:
@@ -105,14 +103,8 @@ try:
 
         with st.chat_message("assistant"):
             with st.spinner("Pensando respuesta..."):
-                res = client.models.generate_content(
-                    model=active_model,
-                    contents=contents,
-                    config=types.GenerateContentConfig(
-                        system_instruction=SYSTEM_PROMPT,
-                        temperature=0.7,
-                    )
-                )
+                res, used_model = generate_content_with_fallback(client, contents)
+                st.session_state["active_model_name"] = used_model
                 st.markdown(res.text)
                 st.session_state.messages.append({"role": "assistant", "content": res.text})
 
