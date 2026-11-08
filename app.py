@@ -3,14 +3,14 @@ import streamlit as st
 from google import genai
 from google.genai import types
 
-# Configuración de la página para móvil y ordenador
+# Configuración de la página
 st.set_page_config(
     page_title="Tutor ZamoraJoven",
     page_icon="🚗",
     layout="centered"
 )
 
-# Clave API de Gemini integrada
+# Clave API integrada
 API_KEY_DIRECTA = "AQ.Ab8RN6JXiZVji4shmzBI-imkjS6j5ZWGBAzFd1pBZ0sww4qmuQ"
 api_key = st.secrets.get("GEMINI_API_KEY") or os.getenv("GEMINI_API_KEY") or API_KEY_DIRECTA
 
@@ -39,10 +39,10 @@ METODOLOGÍA DIDÁCTICA Y REGLAS DE INTERACCIÓN:
 st.title("🚗 Tutor Virtual: Mecánica y Electricidad")
 st.caption("CFGB Mantenimiento de Vehículos — Centro Menesiano ZamoraJoven")
 
-# Conexión con el cliente Gemini
+# Cliente Gemini
 client = genai.Client(api_key=api_key)
 
-# Historial del chat
+# Inicializar conversación
 if "messages" not in st.session_state:
     st.session_state.messages = []
     init_prompt = "Genera la bienvenida inicial de la FASE 1 con las 3 preguntas diagnósticas."
@@ -56,12 +56,12 @@ if "messages" not in st.session_state:
     )
     st.session_state.messages.append({"role": "assistant", "content": response.text})
 
-# Mostrar la conversación
+# Mostrar historial
 for msg in st.session_state.messages:
     with st.chat_message(msg["role"]):
         st.markdown(msg["content"])
 
-# Respuesta del usuario
+# Entrada del estudiante
 if user_input := st.chat_input("Escribe tu respuesta o duda aquí..."):
     st.session_state.messages.append({"role": "user", "content": user_input})
     with st.chat_message("user"):
@@ -72,4 +72,15 @@ if user_input := st.chat_input("Escribe tu respuesta o duda aquí..."):
         role = "user" if m["role"] == "user" else "model"
         contents.append(types.Content(role=role, parts=[types.Part.from_text(text=m["content"])]))
 
-    with st.chat_message("
+    with st.chat_message("assistant"):
+        with st.spinner("Pensando respuesta..."):
+            res = client.models.generate_content(
+                model="gemini-2.5-flash",
+                contents=contents,
+                config=types.GenerateContentConfig(
+                    system_instruction=SYSTEM_PROMPT,
+                    temperature=0.7,
+                )
+            )
+            st.markdown(res.text)
+            st.session_state.messages.append({"role": "assistant", "content": res.text})
