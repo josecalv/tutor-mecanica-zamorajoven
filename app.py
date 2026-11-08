@@ -3,23 +3,13 @@ import streamlit as st
 from google import genai
 from google.genai import types
 
-# Configuración de la página
-st.set_page_config(
-    page_title="Tutor ZamoraJoven",
-    page_icon="🚗",
-    layout="centered"
-)
+st.set_page_config(page_title="Tutor ZamoraJoven", page_icon="🚗", layout="centered")
 
 st.title("🚗 Tutor Virtual: Mecánica y Electricidad")
 st.caption("CFGB Mantenimiento de Vehículos — Centro Menesiano ZamoraJoven")
 
-# Clave inicial
-clave_inicial = "AQ.Ab8RN6JXiZVji4shmzBI-imkjS6j5ZWGBAzFd1pBZ0sww4qmuQ"
-api_key_default = st.secrets.get("GEMINI_API_KEY") or os.getenv("GEMINI_API_KEY") or clave_inicial
-
-# Casilla en la barra lateral para poder cambiar la clave si falla
 st.sidebar.header("⚙️ Configuración")
-api_key = st.sidebar.text_input("Gemini API Key:", value=api_key_default, type="password")
+api_key = st.sidebar.text_input("Gemini API Key:", type="password")
 
 SYSTEM_PROMPT = """
 ROL Y PERFIL:
@@ -44,33 +34,35 @@ METODOLOGÍA DIDÁCTICA Y REGLAS DE INTERACCIÓN:
 """
 
 if not api_key:
-    st.info("Por favor, introduce una API Key válida en la barra lateral para comenzar.")
+    st.info("👈 Por favor, pega tu clave API (empieza por AIzaSy...) en la barra lateral izquierda.")
     st.stop()
 
 try:
-    # Crear cliente Gemini
-    client = genai.Client(api_key=api_key)
+    client = genai.Client(api_key=api_key.strip())
 
-    # Inicializar conversación
-    if "messages" not in st.session_state:
+    if "messages" not in st.session_state or st.sidebar.button("Reiniciar Chat"):
         st.session_state.messages = []
         init_prompt = "Genera la bienvenida inicial de la FASE 1 con las 3 preguntas diagnósticas."
-        response = client.models.generate_content(
-            model="gemini-2.5-flash",
-            contents=init_prompt,
-            config=types.GenerateContentConfig(
-                system_instruction=SYSTEM_PROMPT,
-                temperature=0.7,
+        
+        try:
+            response = client.models.generate_content(
+                model="gemini-2.5-flash",
+                contents=init_prompt,
+                config=types.GenerateContentConfig(system_instruction=SYSTEM_PROMPT, temperature=0.7)
             )
-        )
+        except Exception:
+            response = client.models.generate_content(
+                model="gemini-1.5-flash",
+                contents=init_prompt,
+                config=types.GenerateContentConfig(system_instruction=SYSTEM_PROMPT, temperature=0.7)
+            )
+            
         st.session_state.messages.append({"role": "assistant", "content": response.text})
 
-    # Mostrar historial de chat
     for msg in st.session_state.messages:
         with st.chat_message(msg["role"]):
             st.markdown(msg["content"])
 
-    # Entrada del estudiante
     if user_input := st.chat_input("Escribe tu respuesta o duda aquí..."):
         st.session_state.messages.append({"role": "user", "content": user_input})
         with st.chat_message("user"):
@@ -83,23 +75,20 @@ try:
 
         with st.chat_message("assistant"):
             with st.spinner("Pensando respuesta..."):
-                res = client.models.generate_content(
-                    model="gemini-2.5-flash",
-                    contents=contents,
-                    config=types.GenerateContentConfig(
-                        system_instruction=SYSTEM_PROMPT,
-                        temperature=0.7,
+                try:
+                    res = client.models.generate_content(
+                        model="gemini-2.5-flash",
+                        contents=contents,
+                        config=types.GenerateContentConfig(system_instruction=SYSTEM_PROMPT, temperature=0.7)
                     )
-                )
+                except Exception:
+                    res = client.models.generate_content(
+                        model="gemini-1.5-flash",
+                        contents=contents,
+                        config=types.GenerateContentConfig(system_instruction=SYSTEM_PROMPT, temperature=0.7)
+                    )
                 st.markdown(res.text)
                 st.session_state.messages.append({"role": "assistant", "content": res.text})
 
 except Exception as e:
-    st.error("⚠️ La clave API actual ha sido rechazada por Google (Error 403 / Permisos).")
-    st.warning(
-        "**Cómo solucionarlo en 1 minuto:**\n"
-        "1. Abre una ventana de incógnito y entra en [Google AI Studio](https://aistudio.google.com/).\n"
-        "2. Inicia sesión con una **cuenta personal de Gmail** (`@gmail.com`).\n"
-        "3. Pulsa en **'Get API key'** -> **'Create API key'** (obtendrás una clave que empieza por `AIzaSy...`).\n"
-        "4. Pégala en la casilla de la **barra lateral izquierda** de esta web y el chat empezará a funcionar al instante."
-    )
+    st.error(f"❌ Error de conexión recibido de Google: {e}")
