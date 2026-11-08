@@ -13,21 +13,9 @@ st.set_page_config(
 st.title("🚗 Tutor Virtual: Mecánica y Electricidad")
 st.caption("CFGB Mantenimiento de Vehículos — Centro Menesiano ZamoraJoven")
 
-# Panel lateral de clave API y selector de modelo
+# Panel lateral de clave API
 st.sidebar.header("⚙️ Configuración")
 api_key = st.sidebar.text_input("Gemini API Key:", type="password")
-
-AVAILABLE_MODELS = [
-    "gemini-2.5-flash",
-    "gemini-2.0-flash",
-    "gemini-1.5-flash"
-]
-
-selected_model = st.sidebar.selectbox(
-    "Modelo preferido:",
-    AVAILABLE_MODELS,
-    index=0
-)
 
 SYSTEM_PROMPT = """
 ROL Y PERFIL:
@@ -48,7 +36,7 @@ METODOLOGÍA DIDÁCTICA Y REGLAS DE INTERACCIÓN:
 - Método Socrático: Explica un concepto breve alineado a un RA e inmediatamente realiza UNA sola pregunta de comprobación práctica. No entregues bloques masivos de teoría.
 - Refuerzo Positivo: Reconoce siempre el esfuerzo. Si el alumno se equivoca, ofrece pistas en lugar de la respuesta correcta de inmediato.
 - Conexión con Taller y Seguridad: Vincula cada concepto teórico a prácticas reales del taller ZamoraJoven. Enfatiza el uso obligatorio de EPIs (gafas, guantes, calzado de seguridad), orden y limpieza, y gestión de residuos.
-- Formato: Respuestas breves y estructuradas (máximo 3-4 párrafos por turno). Realiza solo una pregunta o instruction por mensaje.
+- Formato: Respuestas breves y estructuradas (máximo 3-4 párrafos por turno). Realiza solo una pregunta o instrucción por mensaje.
 """
 
 if not api_key:
@@ -58,42 +46,53 @@ if not api_key:
 if "messages" not in st.session_state or st.sidebar.button("Reiniciar Chat"):
     st.session_state.messages = []
 
-def call_gemini_with_fallback(client, contents, preferred_model):
-    """Intenta usar el modelo seleccionado; si falla, prueba automáticamente el resto de la lista."""
-    models_to_try = [preferred_model] + [m for m in AVAILABLE_MODELS if m != preferred_model]
-    
-    last_error = None
-    for model_name in models_to_try:
-        try:
-            return client.models.generate_content(
-                model=model_name,
-                contents=contents,
-                config=types.GenerateContentConfig(
-                    system_instruction=SYSTEM_PROMPT,
-                    temperature=0.7,
-                )
-            )
-        except Exception as e:
-            last_error = e
-            continue
-            
-    raise last_error
+def get_client_and_model(key_str):
+    client = genai.Client(api_key=key_str)
+    available_models = []
+    try:
+        for m in client.models.list():
+            available_models.append(m.name)
+    except Exception:
+        pass
+
+    # Selección jerárquica entre los modelos devueltos por Google
+    selected = None
+    for pref in ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash", "flash"]:
+        for model_name in available_models:
+            if pref in model_name:
+                selected = model_name
+                break
+        if selected:
+            break
+
+    if not selected:
+        selected = available_models[0] if available_models else "gemini-2.5-flash"
+
+    return client, selected
 
 try:
-    client = genai.Client(api_key=api_key.strip())
+    client, active_model = get_client_and_model(api_key.strip())
+    st.sidebar.success(f"Modelo activo: `{active_model}`")
 
-    # Inicializar la FASE 1 si el chat está vacío
+    # Inicializar el chat si está vacío
     if not st.session_state.messages:
         init_prompt = "Genera la bienvenida inicial de la FASE 1 con las 3 preguntas diagnósticas."
-        response = call_gemini_with_fallback(client, init_prompt, selected_model)
+        response = client.models.generate_content(
+            model=active_model,
+            contents=init_prompt,
+            config=types.GenerateContentConfig(
+                system_instruction=SYSTEM_PROMPT,
+                temperature=0.7,
+            )
+        )
         st.session_state.messages.append({"role": "assistant", "content": response.text})
 
-    # Mostrar la conversación guardada
+    # Mostrar historial de conversación
     for msg in st.session_state.messages:
         with st.chat_message(msg["role"]):
             st.markdown(msg["content"])
 
-    # Entrada del estudiante
+    # Entrada de respuesta del alumno
     if user_input := st.chat_input("Escribe tu respuesta o duda aquí..."):
         st.session_state.messages.append({"role": "user", "content": user_input})
         with st.chat_message("user"):
@@ -106,7 +105,14 @@ try:
 
         with st.chat_message("assistant"):
             with st.spinner("Pensando respuesta..."):
-                res = call_gemini_with_fallback(client, contents, selected_model)
+                res = client.models.generate_content(
+                    model=active_model,
+                    contents=contents,
+                    config=types.GenerateContentConfig(
+                        system_instruction=SYSTEM_PROMPT,
+                        temperature=0.7,
+                    )
+                )
                 st.markdown(res.text)
                 st.session_state.messages.append({"role": "assistant", "content": res.text})
 
